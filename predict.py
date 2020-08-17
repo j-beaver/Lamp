@@ -1,22 +1,29 @@
+from time import gmtime, strftime, sleep
 
 import numpy as np
 import random
+import threading
 
 from tensorflow import keras
-import keras.backend as K
+from sklearn.model_selection import train_test_split
 
 model = keras.models.load_model('Data/model')
 
 random.seed(42)
+# noise generator's amplifier (x1000)
 random_amp = 5
 
 start_point = .8
 vol_start = .7
 
+# pulse sequence
 pulse_pattern = [0, 0.5, 1, 0.5, 0]
 pulse_index = 0
 # pulse_amp is the max pulse brightness
 pulse_amp = 0.3
+
+# batch size for reinforcement process
+batch_size = 100
 
 distance_curr = 0
 distance_prev = 0
@@ -33,7 +40,18 @@ vel_prev = 0
 lfo_curr = 0
 lfo_prev = 0
 
-success_stories = [[1, 0, 1, 0]]
+success_stories = np.empty((0, 7), float)
+
+def reinforce():
+    global success_stories
+    global model
+    X = np.array(success_stories)[:, :3]
+    y = success_stories[:, 3]
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=1 / 3, random_state=42)
+    model.fit(X_train, y_train, epochs=30, validation_split=0.3)
+    print("Reinforcement completed successfully")
+    success_stories = np.empty((0, 7), float)
+    return 0
 
 def predict(distance):
 
@@ -57,10 +75,17 @@ def predict(distance):
     global vol_curr
     global vel_curr
     global lfo_curr
+    global success_stories
 
 # keep prev step in history if it caused observer's turning back
     if(distance > distance_curr) & (distance_curr < distance_prev):
-        success_stories.append([[distance_prev, bright_prev, distance_curr, bright_curr, vol_curr, vel_curr, lfo_curr]])
+        temp = np.array([[distance_prev, bright_prev, distance_curr, bright_curr, vol_curr, vel_curr, lfo_curr]])
+        success_stories = np.concatenate((success_stories, temp))
+
+    if len(success_stories) >= batch_size:
+        t = threading.Thread(name='reinforcement', target=reinforce)
+        t.start()
+        np.savetxt('Data/samples/' + str(strftime("%Y-%m-%d-%H-%M-%S", gmtime())) + '.csv', success_stories, fmt='%.4e', delimiter=";")
 
     distance_prev = distance_curr
     distance_curr = distance
@@ -94,20 +119,20 @@ def predict(distance):
 
     return bright_curr, vol_curr, vel_curr, lfo_curr
 
-
-# check memory leakage
-i = 100000
-j = .0
-while i > 0:
-    i -= 1
-    j = i / 100000
-    brightness = predict(j)[0]
-    print(brightness)
-
-# predict
 brightness, volume, velocity, lfo = predict(0.5)
 brightness = predict(0.225)[0]
 brightness, volume, velocity, lfo = predict(0.27)
 
+i = 0
+while i < 10000:
+    j = 0
+    i += 1
+    while j < batch_size:
+        j += 1
+        brightness = predict(0.23)[0]
+        brightness = predict(0.26)[0]
+    sleep(3)
 
 print(distance_prev, bright_prev, distance_curr, brightness)
+
+print (success_stories)
