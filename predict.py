@@ -13,11 +13,15 @@ random.seed(42)
 # noise generator's amplifier (x1000)
 random_amp = 5
 
+# distance above start_point will be cut and distance below it will be additionally normalized
 start_point = .8
-vol_start = .7
+# minimal value of volume prediction
+vol_start = .5
+# vel_stable is predicted when distance = 1
+vel_stable = .2
 
 # pulse sequence
-pulse_pattern = [0, 0.5, 1, 0.5, 0]
+pulse_pattern = [0, 0.3, 0.7, 1, 0.7, 0.3]
 pulse_index = 0
 # pulse_amp is the max pulse brightness
 pulse_amp = 0.3
@@ -66,7 +70,8 @@ def predict(distance):
 # pulse with light on distance over start_point
     if distance == 1:
         pulse_index = (pulse_index + 1) % len(pulse_pattern)
-        return pulse_pattern[pulse_index - 1], pulse_pattern[pulse_index - 1], pulse_pattern[pulse_index - 1], pulse_pattern[pulse_index - 1]
+        pulse_value = pulse_pattern[pulse_index - 1]*pulse_amp
+        return pulse_value, vol_start + pulse_value*(1 - vol_start), vel_stable, pulse_value
 
     global distance_curr
     global bright_curr
@@ -86,6 +91,7 @@ def predict(distance):
         t = threading.Thread(name='reinforcement', target=reinforce)
         t.start()
         np.savetxt('Data/samples/' + str(strftime("%Y-%m-%d-%H-%M-%S", gmtime())) + '.csv', success_stories, fmt='%.4e', delimiter=";")
+        success_stories = np.empty((0, 7), float)
 
     distance_prev = distance_curr
     distance_curr = distance
@@ -94,7 +100,7 @@ def predict(distance):
     x = np.array([[distance_prev, bright_prev, distance_curr]])
     bright_curr = model(x)[0][0].numpy()
 
-    vol_curr = bright_curr+vol_start+(random.randint(- random_amp, random_amp))/1000
+    vol_curr = bright_curr*(1-vol_start)+vol_start+(random.randint(- random_amp, random_amp))/1000
     vel_curr = bright_curr+(random.randint(- random_amp, random_amp))/1000
     lfo_curr = bright_curr+(random.randint(- random_amp, random_amp))/1000
     bright_curr = bright_curr+(random.randint(- random_amp, random_amp))/1000
